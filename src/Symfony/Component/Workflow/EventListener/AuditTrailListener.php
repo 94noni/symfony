@@ -16,6 +16,7 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Workflow\Event\EnterEvent;
 use Symfony\Component\Workflow\Event\LeaveEvent;
 use Symfony\Component\Workflow\Event\TransitionEvent;
+use Symfony\Component\Workflow\WorkflowEvents;
 
 /**
  * @author Grégoire Pineau <lyrixx@lyrixx.info>
@@ -51,9 +52,9 @@ class AuditTrailListener implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            LeaveEvent::class => ['onLeave'],
-            TransitionEvent::class => ['onTransition'],
-            EnterEvent::class => ['onEnter'],
+            WorkflowEvents::LEAVE => ['onLeave'],
+            WorkflowEvents::TRANSITION => ['onTransition'],
+            WorkflowEvents::ENTER => ['onEnter'],
         ];
     }
 }
