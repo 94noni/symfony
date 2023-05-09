@@ -51,6 +51,7 @@ class EnvVarProcessor implements EnvVarProcessorInterface
             'query_string' => 'array',
             'resolve' => 'string',
             'default' => 'bool|int|float|string|array',
+            'default_env' => 'bool|int|float|string|array',
             'string' => 'string',
             'trim' => 'string',
             'require' => 'bool|int|float|string|array',
@@ -126,6 +127,29 @@ class EnvVarProcessor implements EnvVarProcessorInterface
             }
 
             return '' === $default ? null : $this->container->getParameter($default);
+        }
+
+        if ('default_env' === $prefix) {
+            $next = substr($name, $i + 1);
+            $default = substr($name, 0, $i);
+
+            try {
+                $envNext = $getEnv($next);
+
+                if ('' !== $envNext && null !== $envNext) {
+                    return $envNext;
+                }
+
+                default_env_default:
+
+                return $this->getEnv('default', $name, $getEnv);
+            } catch (EnvNotFoundException $e) {
+                if ($e instanceof EnvNotFoundException) {
+                    goto default_env_default;
+                }
+            }
+
+            throw new RuntimeException(sprintf('Env var "%s" default to nothing "%s".', $name, $env));
         }
 
         if ('file' === $prefix || 'require' === $prefix) {
