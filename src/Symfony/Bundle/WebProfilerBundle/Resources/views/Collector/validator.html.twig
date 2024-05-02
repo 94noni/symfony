@@ -50,7 +50,7 @@
             </div>
         {% endset %}
 
-        {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', { link: profiler_url, status: status_color }) }}
+        {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', {link: profiler_url, status: status_color}) }}
     {% endif %}
 {% endblock %}
 
@@ -98,7 +98,7 @@
             </div>
 
             <div class="sf-validator-compact hidden sf-validator-context" id="sf-context-{{ loop.index0 }}">
-                {{ profiler_dump(call.context, maxDepth=1) }}
+                {{ profiler_dump(call.context, maxDepth = 1) }}
             </div>
 
             {% if call.violations|length %}
