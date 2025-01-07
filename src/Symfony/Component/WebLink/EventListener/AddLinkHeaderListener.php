@@ -46,6 +46,7 @@ class AddLinkHeaderListener implements EventSubscriberInterface
         }
 
         $event->getResponse()->headers->set('Link', $this->serializer->serialize($links), false);
+        $event->getResponse()->sendHeaders(103);
     }
 
     public static function getSubscribedEvents(): array
