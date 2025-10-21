@@ -12,6 +12,7 @@
 namespace Symfony\Bundle\FrameworkBundle\Command;
 
 use Symfony\Component\Config\Definition\ConfigurationInterface;
+use Symfony\Component\Config\Definition\Dumper\YamlReferenceDumper;
 use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Completion\CompletionInput;
@@ -28,9 +29,11 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ConfigurationExtensionInterface;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\Yaml\Yaml;
+use SebastianBergmann\Diff\Differ;
+use SebastianBergmann\Diff\Output\UnifiedDiffOutputBuilder;
 
 /**
- * A console command for dumping available configuration reference.
+ * A console command for dumping available configuration reference and optionally a diff with current one.
  *
  * @author Grégoire Pineau <lyrixx@lyrixx.info>
  *
@@ -47,6 +50,7 @@ class ConfigDebugCommand extends AbstractConfigCommand
                 new InputArgument('path', InputArgument::OPTIONAL, 'The configuration option path'),
                 new InputOption('resolve-env', null, InputOption::VALUE_NONE, 'Display resolved environment variable values instead of placeholders'),
                 new InputOption('format', null, InputOption::VALUE_REQUIRED, \sprintf('The output format ("%s")', implode('", "', $this->getAvailableFormatOptions())), class_exists(Yaml::class) ? 'txt' : 'json'),
+                new InputOption('diff-reference-config', null, InputOption::VALUE_NONE, 'Compare the current configuration with the reference one'),
             ])
             ->setHelp(<<<EOF
                 The <info>%command.name%</info> command dumps the current configuration for an
@@ -64,6 +68,10 @@ class ConfigDebugCommand extends AbstractConfigCommand
                 For dumping a specific option, add its path as second argument:
 
                   <info>php %command.full_name% framework serializer.enabled</info>
+
+                The <info>--diff-reference-config</info> option makes a diff between current and reference configuration (only available for the yaml format):
+
+                  <info>php %command.full_name% web_profiler --diff-reference-config --format=yaml</info>
 
                 EOF
             )
@@ -99,6 +107,22 @@ class ConfigDebugCommand extends AbstractConfigCommand
             return 1;
         }
 
+        $diff = $input->getOption('diff-reference-config');
+
+        if ($diff) {
+            if (!class_exists(Differ::class)) {
+                $errorIo->error('Using the "diff-reference-config" option requires the package "sebastian/diff". Try running "composer require --dev sebastian/diff".');
+
+                return 1;
+            }
+
+            if ('yaml' !== $format) {
+                $errorIo->error('Using the "diff-reference-config" option requires the output format to be "yaml".');
+
+                return 1;
+            }
+        }
+
         if (null === $path = $input->getArgument('path')) {
             if ('txt' === $input->getOption('format')) {
                 $io->title(
@@ -110,7 +134,15 @@ class ConfigDebugCommand extends AbstractConfigCommand
                 }
             }
 
-            $io->writeln($this->convertToFormat([$extensionAlias => $config], $format));
+            $currentConfig = $this->convertToFormat($config, $format);
+
+            if ($diff) {
+                $io->note(\sprintf('With Difference with default configuration for extension "%s"', $extensionAlias));
+
+                $currentConfig = $this->doDiff($extension, $currentConfig);
+            }
+
+            $io->writeln($currentConfig);
 
             return 0;
         }
@@ -283,5 +315,49 @@ class ConfigDebugCommand extends AbstractConfigCommand
             ->getRootNode()
             ->getNode(true)
             ->getAttribute('docUrl');
+    }
+
+    private function doDiff(ExtensionInterface $extension, string $currentConfig): string
+    {
+        // Use directly the existing command and get its output somehow?
+        /*
+        $configDumpReferenceInputs = new ArrayInput([
+            'command' => 'config:dump-reference',
+            'name' => $extensionAlias,
+            '--format' => 'yaml',
+        ]);
+        $configDumpReferenceInputs->setInteractive(false);
+        $application = $this->getApplication();
+        $defaultConfig = $application->doRun($configDumpReferenceInputs, $output);;
+        */
+
+        // Use the underlying code of "config:dump-reference" to dump default config and sanitize it for better diff
+        if ($extension instanceof ConfigurationInterface) {
+            $configuration = $extension;
+        } else {
+            $configuration = $extension->getConfiguration([], $this->getContainerBuilder($this->getApplication()->getKernel()));
+        }
+        $dumper = new YamlReferenceDumper();
+        $defaultConfig = $dumper->dump($configuration);
+
+        // Remove first line, lines beginning with spaces and # and empty lines
+        $lines = explode("\n", $defaultConfig);
+        array_shift($lines);
+        $lines = array_filter(
+            $lines,
+            fn($line) => !preg_match('/^\s*#/', $line) && trim($line) !== ''
+        );
+        // Remove first 4 spaces from every line
+        $lines = array_map(fn($line) => preg_replace('/^    /', '', $line), $lines);
+        // Remove comments (from # until end of line)
+        $lines = array_map(fn($line) => preg_replace('/#.*$/', '', $line), $lines);
+        // Replace multiple consecutive spaces with a single space (except at line start)
+        $lines = array_map(fn($line) => preg_replace('/(?<=\S) {2,}/', ' ', $line), $lines);
+        $defaultConfig = implode("\n", $lines);
+        // Remove trailing newline
+        $defaultConfig = rtrim($defaultConfig, "\n");
+        $currentConfig = rtrim($currentConfig, "\n");
+
+        return new Differ(new UnifiedDiffOutputBuilder)->diff($defaultConfig, $currentConfig);
     }
 }
