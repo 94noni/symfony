@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+8.1
+---
+
+* Add `Symfony\Component\Messenger\Middleware\AuditMiddleware`.
+
 7.4
 ---
 
